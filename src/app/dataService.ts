@@ -190,6 +190,41 @@ export interface SecondaryRoleInsight {
   orientation: "partnership-heavy" | "competition-heavy" | "hybrid";
 }
 
+export interface RecommendationEntity {
+  id: string;
+  brandName: string;
+  industry: string;
+  parentFirm: string;
+  primaryRole: string;
+  secondaryRole: string;
+  exchangeType: string;
+  coOpAvg: number;
+  compAvg: number;
+  strategicRelevanceScore: number;
+  riskScore: number;
+  opportunityScore: number;
+  recommendedMove: string;
+}
+
+export interface IndustryOpportunityInsight {
+  industry: string;
+  opportunityScore: number;
+  currentPresenceCount: number;
+  potentialPresenceCount: number;
+  topBrands: string[];
+}
+
+export interface StrategicRecommendations {
+  purePartners: RecommendationEntity[];
+  highRiskCompetitors: RecommendationEntity[];
+  coopetitors: RecommendationEntity[];
+  quickWinPartnerships: RecommendationEntity[];
+  apiDataCandidates: RecommendationEntity[];
+  jvCandidates: RecommendationEntity[];
+  internalBuildCandidates: RecommendationEntity[];
+  industryOpportunities: IndustryOpportunityInsight[];
+}
+
 export const LAYER_DISPLAY_LABELS: Record<string, string> = {
   Market: "بازار و اکوسیستم",
   "First Mile": "فرست‌مایل",
@@ -265,6 +300,29 @@ function topValues(values: string[], count = 3): string[] {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fa"))
     .slice(0, count)
     .map(([value]) => value);
+}
+
+function average(values: number[]) {
+  if (values.length === 0) return 0;
+  return round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function toRecommendationEntity(entity: NormalizedEntity): RecommendationEntity {
+  return {
+    id: entity.id,
+    brandName: entity.brandName,
+    industry: entity.industry,
+    parentFirm: entity.parentFirm,
+    primaryRole: entity.primaryRole,
+    secondaryRole: entity.secondaryRole,
+    exchangeType: entity.exchangeType,
+    coOpAvg: entity.coOpAvg,
+    compAvg: entity.compAvg,
+    strategicRelevanceScore: entity.strategicRelevanceScore,
+    riskScore: entity.riskScore,
+    opportunityScore: entity.opportunityScore,
+    recommendedMove: entity.recommendedMove,
+  };
 }
 
 const COLUMN_ALIASES: Record<string, keyof RawRecord> = {
@@ -941,4 +999,139 @@ export function getSecondaryRoleInsights(entities: NormalizedEntity[]): Secondar
       };
     })
     .sort((a, b) => b.brandCount - a.brandCount || b.averageCoOpAvg - a.averageCoOpAvg);
+}
+
+export function getFakherCompanyPartnershipMatches(
+  entities: NormalizedEntity[],
+  fakherCompanies: FakherCompanyConfig[],
+  selectedCompanyName: string,
+) {
+  const normalizedTarget = normalizeName(selectedCompanyName);
+  const fakherLookup = new Set(fakherCompanies.map((company) => company.normalizedName));
+  const targetExists = fakherLookup.has(normalizedTarget);
+
+  if (!targetExists) return [];
+
+  return entities
+    .filter((entity) => entity.potentialPartnerships.some((partner) => normalizeName(partner) === normalizedTarget))
+    .map((entity) => ({
+      ...toRecommendationEntity(entity),
+      recommendedMove:
+        entity.coOpAvg >= 6 && entity.compAvg < 5
+          ? "ورود سریع به مذاکره و تعریف پایلوت همکاری"
+          : entity.coOpAvg >= 5 && entity.compAvg >= 5
+            ? "همکاری مرحله‌ای با مرزبندی شفاف و KPI مشترک"
+            : entity.opportunityScore >= 4.5
+              ? "اعتبارسنجی فرصت و طراحی بسته مشارکت"
+              : "نیازمند بررسی عمیق‌تر و امتیازدهی تکمیلی",
+    }))
+    .sort((a, b) => b.opportunityScore - a.opportunityScore || b.strategicRelevanceScore - a.strategicRelevanceScore);
+}
+
+export function getIndustryOpportunityInsights(entities: NormalizedEntity[]): IndustryOpportunityInsight[] {
+  const industryMap = new Map<string, NormalizedEntity[]>();
+
+  entities.forEach((entity) => {
+    const items = industryMap.get(entity.industry) ?? [];
+    items.push(entity);
+    industryMap.set(entity.industry, items);
+  });
+
+  return [...industryMap.entries()]
+    .map(([industry, items]) => {
+      const opportunityScore = average(items.map((item) => item.opportunityScore));
+      const currentPresenceCount = items.filter((item) => item.actualPartnerCount > 0).length;
+      const potentialPresenceCount = items.filter((item) => item.potentialPartnerCount > 0).length;
+
+      return {
+        industry,
+        opportunityScore,
+        currentPresenceCount,
+        potentialPresenceCount,
+        topBrands: items
+          .sort((a, b) => b.opportunityScore - a.opportunityScore)
+          .slice(0, 4)
+          .map((item) => item.brandName),
+      };
+    })
+    .filter((item) => item.potentialPresenceCount > item.currentPresenceCount || item.currentPresenceCount <= 1)
+    .sort(
+      (a, b) =>
+        b.opportunityScore - a.opportunityScore ||
+        b.potentialPresenceCount - a.potentialPresenceCount ||
+        a.currentPresenceCount - b.currentPresenceCount,
+    )
+    .slice(0, 10);
+}
+
+export function getStrategicRecommendations(entities: NormalizedEntity[]): StrategicRecommendations {
+  const purePartners = entities
+    .filter((entity) => entity.coOpAvg >= 6 && entity.compAvg < 5)
+    .sort((a, b) => b.strategicRelevanceScore - a.strategicRelevanceScore)
+    .slice(0, 10)
+    .map(toRecommendationEntity);
+
+  const highRiskCompetitors = entities
+    .filter((entity) => entity.compAvg >= 6 && entity.coOpAvg < 5)
+    .sort((a, b) => b.riskScore - a.riskScore)
+    .slice(0, 10)
+    .map(toRecommendationEntity);
+
+  const coopetitors = entities
+    .filter((entity) => entity.coOpAvg >= 5 && entity.compAvg >= 5)
+    .sort((a, b) => b.strategicRelevanceScore - a.strategicRelevanceScore)
+    .slice(0, 10)
+    .map(toRecommendationEntity);
+
+  const quickWinPartnerships = entities
+    .filter((entity) => entity.potentialPartnerCount > 0 && entity.compAvg < 5.5 && entity.opportunityScore >= 4.5)
+    .sort((a, b) => b.opportunityScore - a.opportunityScore || b.coOpAvg - a.coOpAvg)
+    .slice(0, 10)
+    .map(toRecommendationEntity);
+
+  const apiDataCandidates = entities
+    .filter(
+      (entity) =>
+        entity.flowType === "Data" ||
+        entity.exchangeTypes.some((type) => {
+          const normalized = normalizeToken(type);
+          return normalized.includes("data") || normalized.includes("api") || normalized.includes("cloud");
+        }),
+    )
+    .sort((a, b) => b.opportunityScore - a.opportunityScore || b.strategicRelevanceScore - a.strategicRelevanceScore)
+    .slice(0, 10)
+    .map(toRecommendationEntity);
+
+  const jvCandidates = entities
+    .filter(
+      (entity) =>
+        entity.coOpAvg >= 5 &&
+        entity.compAvg >= 4 &&
+        (entity.exchangeTypeCount > 1 || entity.potentialPartnerCount > 1 || entity.actualPartnerCount > 0),
+    )
+    .sort((a, b) => b.strategicRelevanceScore - a.strategicRelevanceScore || b.coOpAvg - a.coOpAvg)
+    .slice(0, 10)
+    .map(toRecommendationEntity);
+
+  const internalBuildCandidates = entities
+    .filter(
+      (entity) =>
+        entity.compAvg >= 6 &&
+        entity.actualPartnerCount === 0 &&
+        (entity.weaknessLayers.length > 0 || entity.potentialPartnerCount === 0),
+    )
+    .sort((a, b) => b.riskScore - a.riskScore || b.strategicRelevanceScore - a.strategicRelevanceScore)
+    .slice(0, 10)
+    .map(toRecommendationEntity);
+
+  return {
+    purePartners,
+    highRiskCompetitors,
+    coopetitors,
+    quickWinPartnerships,
+    apiDataCandidates,
+    jvCandidates,
+    internalBuildCandidates,
+    industryOpportunities: getIndustryOpportunityInsights(entities),
+  };
 }

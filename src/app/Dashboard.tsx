@@ -19,7 +19,9 @@ import {
   createDefaultGlobalFilters,
   EMPTY_FILTER_VALUE,
   formatLastUpdated,
+  type FakherCompanyConfig,
   getFakherRelatedEntities,
+  getStrategicRecommendations,
   getGlobalFilterOptions,
   getIndustryCoverageInsights,
   getPrimaryRoleInsights,
@@ -31,9 +33,11 @@ import {
 } from "./dataService";
 import { CompanyProfileView } from "./components/CompanyProfileView";
 import { CoopetitionScatter } from "./components/CoopetitionScatter";
+import { FakherCompanyFilterView } from "./components/FakherCompanyFilterView";
 import { IndustryCoverageView } from "./components/IndustryCoverageView";
 import { OpportunityTable } from "./components/OpportunityTable";
 import { RoleInsightsView } from "./components/RoleInsightsView";
+import { StrategicRecommendationEngine } from "./components/StrategicRecommendationEngine";
 import { ValueChainHeatmap } from "./components/ValueChainHeatmap";
 
 function SectionCard({
@@ -194,6 +198,7 @@ function EmptyState({ title, description }: { title: string; description: string
 
 export function Dashboard() {
   const [entities, setEntities] = useState<NormalizedEntity[]>([]);
+  const [fakherCompanies, setFakherCompanies] = useState<FakherCompanyConfig[]>([]);
   const [valueChainLayers, setValueChainLayers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -209,6 +214,7 @@ export function Dashboard() {
     try {
       const result = await loadAllSheets();
       setEntities(result.entities);
+      setFakherCompanies(result.fakherCompanies);
       setValueChainLayers(result.valueChainLayers);
       setSource(result.source);
       setLastUpdated(result.lastUpdated);
@@ -250,6 +256,10 @@ export function Dashboard() {
 
   const primaryRoleInsights = useMemo(() => getPrimaryRoleInsights(filteredEntities), [filteredEntities]);
   const secondaryRoleInsights = useMemo(() => getSecondaryRoleInsights(filteredEntities), [filteredEntities]);
+  const strategicRecommendations = useMemo(
+    () => getStrategicRecommendations(filteredEntities),
+    [filteredEntities],
+  );
 
   const dashboardStats = useMemo(() => {
     const totalBrands = entities.length;
@@ -578,6 +588,20 @@ export function Dashboard() {
                 primaryInsights={primaryRoleInsights}
                 secondaryInsights={secondaryRoleInsights}
               />
+            </SectionCard>
+
+            <SectionCard
+              title="Fakher Company Filter View"
+              description="نمای سریع برای تشخیص برندهایی که هر شرکت فاخر می‌تواند به‌صورت بالقوه با آن‌ها وارد همکاری شود."
+            >
+              <FakherCompanyFilterView entities={filteredEntities} fakherCompanies={fakherCompanies} />
+            </SectionCard>
+
+            <SectionCard
+              title="Strategic Recommendation Engine"
+              description="خروجی‌های نهایی این بخش برای مدیران ارشد، اولویت‌بندی تصمیم‌ها و تشخیص سریع فرصت‌ها و تهدیدها طراحی شده‌اند."
+            >
+              <StrategicRecommendationEngine recommendations={strategicRecommendations} />
             </SectionCard>
 
             <SectionCard
