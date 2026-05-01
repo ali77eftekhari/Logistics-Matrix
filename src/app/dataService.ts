@@ -162,6 +162,34 @@ export interface GlobalFilterOptions {
 
 export const EMPTY_FILTER_VALUE = "All";
 
+export interface IndustryCoverageInsight {
+  industry: string;
+  actualMatches: number;
+  potentialMatches: number;
+  status: "current" | "potential-only" | "no-presence";
+  topPotentialBrands: string[];
+}
+
+export interface PrimaryRoleInsight {
+  role: string;
+  brandCount: number;
+  averageCoOpAvg: number;
+  averageCompAvg: number;
+  commonExchangeTypes: string[];
+  commonStrengths: string[];
+  commonWeaknesses: string[];
+  recommendedMove: string;
+}
+
+export interface SecondaryRoleInsight {
+  role: string;
+  brandCount: number;
+  averageCoOpAvg: number;
+  averageCompAvg: number;
+  dominantHoldings: string[];
+  orientation: "partnership-heavy" | "competition-heavy" | "hybrid";
+}
+
 export const LAYER_DISPLAY_LABELS: Record<string, string> = {
   Market: "بازار و اکوسیستم",
   "First Mile": "فرست‌مایل",
@@ -224,6 +252,19 @@ function round(value: number): number {
 
 function unique(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function topValues(values: string[], count = 3): string[] {
+  const tally = values.reduce<Map<string, number>>((acc, value) => {
+    if (!value) return acc;
+    acc.set(value, (acc.get(value) ?? 0) + 1);
+    return acc;
+  }, new Map());
+
+  return [...tally.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fa"))
+    .slice(0, count)
+    .map(([value]) => value);
 }
 
 const COLUMN_ALIASES: Record<string, keyof RawRecord> = {
@@ -792,4 +833,112 @@ export function applyGlobalFilters(entities: NormalizedEntity[], filters: Global
 
     return true;
   });
+}
+
+export function getFakherRelatedEntities(entities: NormalizedEntity[]) {
+  return entities.filter((entity) => entity.isFakherRelated);
+}
+
+export function getIndustryCoverageInsights(entities: NormalizedEntity[]): IndustryCoverageInsight[] {
+  const industries = Array.from(new Set(entities.map((entity) => entity.industry).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b, "fa"),
+  );
+
+  return industries.map((industry) => {
+    const industryEntities = entities.filter((entity) => entity.industry === industry);
+    const actualMatches = industryEntities.filter((entity) => entity.actualPartnerCount > 0).length;
+    const potentialMatches = industryEntities.filter((entity) => entity.potentialPartnerCount > 0).length;
+    const status =
+      actualMatches > 0 ? "current" : potentialMatches > 0 ? "potential-only" : "no-presence";
+
+    return {
+      industry,
+      actualMatches,
+      potentialMatches,
+      status,
+      topPotentialBrands: industryEntities
+        .filter((entity) => entity.potentialPartnerCount > 0)
+        .sort((a, b) => b.opportunityScore - a.opportunityScore)
+        .slice(0, 4)
+        .map((entity) => entity.brandName),
+    };
+  });
+}
+
+export function getPrimaryRoleInsights(entities: NormalizedEntity[]): PrimaryRoleInsight[] {
+  const groups = Array.from(
+    entities.reduce<Map<string, NormalizedEntity[]>>((acc, entity) => {
+      const key = entity.primaryRole || "نامشخص";
+      const items = acc.get(key) ?? [];
+      items.push(entity);
+      acc.set(key, items);
+      return acc;
+    }, new Map()),
+  );
+
+  return groups
+    .map(([role, items]) => {
+      const avgCoOp = round(items.reduce((sum, item) => sum + item.coOpAvg, 0) / items.length);
+      const avgComp = round(items.reduce((sum, item) => sum + item.compAvg, 0) / items.length);
+      const commonExchangeTypes = topValues(items.flatMap((item) => item.exchangeTypes), 4);
+      const commonStrengths = topValues(items.flatMap((item) => item.strengthLayers), 4);
+      const commonWeaknesses = topValues(items.flatMap((item) => item.weaknessLayers), 4);
+
+      const recommendedMove =
+        avgCoOp >= 6 && avgComp < 5
+          ? "تقویت مشارکت ساختاریافته و تعریف بسته همکاری استاندارد"
+          : avgCoOp >= 5 && avgComp >= 5
+            ? "تعریف چارچوب همکاری کنترل‌شده با مرزبندی رقابتی روشن"
+            : avgComp >= 6
+              ? "پایش رقابتی مستمر و تقویت مزیت‌های متمایز"
+              : "پایش فرصت و آماده‌سازی مسیر ورود مرحله‌ای";
+
+      return {
+        role,
+        brandCount: items.length,
+        averageCoOpAvg: avgCoOp,
+        averageCompAvg: avgComp,
+        commonExchangeTypes,
+        commonStrengths,
+        commonWeaknesses,
+        recommendedMove,
+      };
+    })
+    .sort((a, b) => b.brandCount - a.brandCount || b.averageCoOpAvg - a.averageCoOpAvg);
+}
+
+export function getSecondaryRoleInsights(entities: NormalizedEntity[]): SecondaryRoleInsight[] {
+  const roleMap = new Map<string, NormalizedEntity[]>();
+
+  entities.forEach((entity) => {
+    const roles = entity.secondaryRoles.length > 0 ? entity.secondaryRoles : ["بدون نقش ثانویه"];
+    roles.forEach((role) => {
+      const items = roleMap.get(role) ?? [];
+      items.push(entity);
+      roleMap.set(role, items);
+    });
+  });
+
+  return [...roleMap.entries()]
+    .map(([role, items]) => {
+      const averageCoOpAvg = round(items.reduce((sum, item) => sum + item.coOpAvg, 0) / items.length);
+      const averageCompAvg = round(items.reduce((sum, item) => sum + item.compAvg, 0) / items.length);
+      const dominantHoldings = topValues(items.map((item) => item.parentFirm), 3);
+      const orientation =
+        averageCoOpAvg >= 5.5 && averageCompAvg < 5
+          ? "partnership-heavy"
+          : averageCompAvg >= 5.5 && averageCoOpAvg < 5
+            ? "competition-heavy"
+            : "hybrid";
+
+      return {
+        role,
+        brandCount: items.length,
+        averageCoOpAvg,
+        averageCompAvg,
+        dominantHoldings,
+        orientation,
+      };
+    })
+    .sort((a, b) => b.brandCount - a.brandCount || b.averageCoOpAvg - a.averageCoOpAvg);
 }

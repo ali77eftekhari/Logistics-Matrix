@@ -19,14 +19,21 @@ import {
   createDefaultGlobalFilters,
   EMPTY_FILTER_VALUE,
   formatLastUpdated,
+  getFakherRelatedEntities,
   getGlobalFilterOptions,
+  getIndustryCoverageInsights,
+  getPrimaryRoleInsights,
+  getSecondaryRoleInsights,
   loadAllSheets,
   type GlobalFilters,
   type NormalizedEntity,
   PUBLISHED_SHEET_URL,
 } from "./dataService";
+import { CompanyProfileView } from "./components/CompanyProfileView";
 import { CoopetitionScatter } from "./components/CoopetitionScatter";
+import { IndustryCoverageView } from "./components/IndustryCoverageView";
 import { OpportunityTable } from "./components/OpportunityTable";
+import { RoleInsightsView } from "./components/RoleInsightsView";
 import { ValueChainHeatmap } from "./components/ValueChainHeatmap";
 
 function SectionCard({
@@ -235,6 +242,14 @@ export function Dashboard() {
       })),
     [filteredEntities],
   );
+
+  const fakherIndustryInsights = useMemo(
+    () => getIndustryCoverageInsights(getFakherRelatedEntities(filteredEntities)),
+    [filteredEntities],
+  );
+
+  const primaryRoleInsights = useMemo(() => getPrimaryRoleInsights(filteredEntities), [filteredEntities]);
+  const secondaryRoleInsights = useMemo(() => getSecondaryRoleInsights(filteredEntities), [filteredEntities]);
 
   const dashboardStats = useMemo(() => {
     const totalBrands = entities.length;
@@ -539,6 +554,30 @@ export function Dashboard() {
               <div className="rounded-[24px] bg-slate-50/90 p-3 dark:bg-slate-950/40">
                 <ValueChainHeatmap entities={filteredEntities} layers={valueChainLayers} />
               </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Fakher Partnership Coverage by Industry"
+              description="پوشش صنعتی همکاری‌های فعلی و بالقوه فاخر برای شناسایی سریع شکاف‌ها و اولویت‌های توسعه."
+            >
+              <IndustryCoverageView insights={fakherIndustryInsights} />
+            </SectionCard>
+
+            <SectionCard
+              title="Company Strength & Weakness Profile"
+              description="نمای پروفایل‌محور از قوت‌ها، ضعف‌ها، نقش‌ها، نوع مبادله و تفسیر استراتژیک هر شرکت."
+            >
+              <CompanyProfileView entities={filteredEntities} />
+            </SectionCard>
+
+            <SectionCard
+              title="Role-Based Insights"
+              description="تحلیل مدیریتی نقش‌های اصلی و ثانویه برای تشخیص الگوهای غالب و جهت‌گیری استراتژیک."
+            >
+              <RoleInsightsView
+                primaryInsights={primaryRoleInsights}
+                secondaryInsights={secondaryRoleInsights}
+              />
             </SectionCard>
 
             <SectionCard
