@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import { useTheme } from "next-themes";
 import {
   CartesianGrid,
@@ -25,23 +25,13 @@ type ScatterDatum = NormalizedEntity & {
   x: number;
   y: number;
   z: number;
-  shortPrimaryRole: string;
   dominantExchangeType: string;
   hasMultiExchangeTypes: boolean;
   labelOffsetX: number;
   labelOffsetY: number;
+  color: string;
+  shape: "circle" | "diamond" | "triangle" | "square" | "star";
 };
-
-const ROLE_COLORS = [
-  "#155EEF",
-  "#0F766E",
-  "#B54708",
-  "#B42318",
-  "#7A5AF8",
-  "#087443",
-  "#475467",
-  "#C11574",
-];
 
 const SHAPE_BY_EXCHANGE: Record<string, "circle" | "diamond" | "triangle" | "square" | "star"> = {
   data: "diamond",
@@ -56,19 +46,21 @@ const SHAPE_BY_EXCHANGE: Record<string, "circle" | "diamond" | "triangle" | "squ
   service: "star",
 };
 
+const EXCHANGE_COLORS = {
+  goods: "#facc15",
+  financial: "#16a34a",
+  credit: "#2563eb",
+  data: "#dc2626",
+  multi: "#f97316",
+  other: "#64748b",
+} as const;
+
 function normalizeVisualToken(value: string | undefined) {
   return (value ?? "")
     .toLowerCase()
     .replace(/\u200c/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function getRoleColor(role: string, roleMap: Map<string, string>) {
-  if (!roleMap.has(role)) {
-    roleMap.set(role, ROLE_COLORS[roleMap.size % ROLE_COLORS.length]);
-  }
-  return roleMap.get(role)!;
 }
 
 function getExchangeShape(exchangeTypes: string[]) {
@@ -80,6 +72,40 @@ function getExchangeShape(exchangeTypes: string[]) {
   }
 
   return { dominant, shape: "circle" as const };
+}
+
+function getExchangeColor(exchangeTypes: string[]) {
+  if (exchangeTypes.length > 1) return EXCHANGE_COLORS.multi;
+
+  const dominant = normalizeVisualToken(exchangeTypes[0] ?? "other");
+
+  if (dominant.includes("کالا") || dominant.includes("goods") || dominant.includes("product")) {
+    return EXCHANGE_COLORS.goods;
+  }
+
+  if (
+    dominant.includes("مالی") ||
+    dominant.includes("financial") ||
+    dominant.includes("finance") ||
+    dominant.includes("payment")
+  ) {
+    return EXCHANGE_COLORS.financial;
+  }
+
+  if (dominant.includes("اعتبار") || dominant.includes("credit")) {
+    return EXCHANGE_COLORS.credit;
+  }
+
+  if (
+    dominant.includes("داده") ||
+    dominant.includes("data") ||
+    dominant.includes("api") ||
+    dominant.includes("cloud")
+  ) {
+    return EXCHANGE_COLORS.data;
+  }
+
+  return EXCHANGE_COLORS.other;
 }
 
 function buildScatterData(data: NormalizedEntity[]): ScatterDatum[] {
@@ -113,13 +139,13 @@ function buildScatterData(data: NormalizedEntity[]): ScatterDatum[] {
       x: entity.coOpAvg,
       y: entity.compAvg,
       z: Math.max(entity.strategicRelevanceScore * 60, 160),
-      shortPrimaryRole: entity.primaryRole.split("/")[0]?.trim() || entity.primaryRole,
       dominantExchangeType: dominant,
       hasMultiExchangeTypes: entity.exchangeTypes.length > 1,
       labelOffsetX: preferredOffset.x,
       labelOffsetY: preferredOffset.y,
+      color: getExchangeColor(entity.exchangeTypes),
       shape,
-    } as ScatterDatum;
+    };
   });
 }
 
@@ -164,10 +190,9 @@ const CustomTooltip = ({ active, payload }: any) => {
 };
 
 function shapeRenderer(props: any) {
-  const { cx, cy, payload } = props;
+  const { cx, cy, payload, fill } = props;
   const item = payload as ScatterDatum;
   const size = Math.max(Math.sqrt(item.z), 12);
-  const fill = item.fill;
   const stroke = item.hasMultiExchangeTypes ? "#0f172a" : "#ffffff";
   const strokeWidth = item.hasMultiExchangeTypes ? 2.5 : 1.5;
   const dash = item.hasMultiExchangeTypes ? "4 3" : undefined;
@@ -283,13 +308,32 @@ function labelRenderer(props: any) {
 function QuadrantLegend() {
   return (
     <div className="mb-4 flex flex-wrap gap-2 text-xs">
-      <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-800">Partner Zone</span>
-      <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">Coopetition Zone</span>
-      <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-800">Threat Zone</span>
-      <span className="rounded-full bg-slate-200 px-3 py-1 text-slate-700">Low Relevance Zone</span>
+      <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-800">منطقه شریک</span>
+      <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">منطقه همکار-رقیب</span>
+      <span className="rounded-full bg-rose-100 px-3 py-1 text-rose-800">منطقه تهدید</span>
+      <span className="rounded-full bg-slate-200 px-3 py-1 text-slate-700">منطقه کم‌اهمیت</span>
       <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-slate-700">
-        dashed border = multi-select exchange type
+        حاشیه خط‌چین = چند نوع تبادل
       </span>
+      <span className="rounded-full bg-yellow-300 px-3 py-1 text-yellow-950">کالا</span>
+      <span className="rounded-full bg-green-600 px-3 py-1 text-white">مالی</span>
+      <span className="rounded-full bg-blue-600 px-3 py-1 text-white">اعتبار</span>
+      <span className="rounded-full bg-red-600 px-3 py-1 text-white">داده</span>
+      <span className="rounded-full bg-orange-500 px-3 py-1 text-white">چندانتخابی</span>
+      <span className="rounded-full bg-slate-500 px-3 py-1 text-white">سایر</span>
+    </div>
+  );
+}
+
+function ScatterLegendSummary() {
+  return (
+    <div className="grid gap-2 text-xs text-slate-500 dark:text-slate-400 lg:grid-cols-2">
+      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+        رنگ هر نقطه بر اساس <span className="font-semibold">نوع تبادل</span> تعیین می‌شود.
+      </div>
+      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+        اگر یک برند چند نوع تبادل داشته باشد، با رنگ <span className="font-semibold">نارنجی</span> نمایش داده می‌شود.
+      </div>
     </div>
   );
 }
@@ -298,21 +342,12 @@ export function CoopetitionScatter({ data }: Props) {
   const { theme } = useTheme();
   const textColor = theme === "dark" ? "#94a3b8" : "#64748b";
   const gridColor = theme === "dark" ? "#334155" : "#e2e8f0";
-  const roleMap = useMemo(() => new Map<string, string>(), []);
   const scatterData = useMemo(() => buildScatterData(data), [data]);
 
   return (
     <div className="space-y-4" dir="ltr">
       <QuadrantLegend />
-
-      <div className="grid gap-2 text-xs text-slate-500 dark:text-slate-400 lg:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
-          Colors represent <span className="font-semibold">Primary Role</span>.
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
-          Shapes represent the dominant <span className="font-semibold">Exchange Type</span>; tooltips show all selected values.
-        </div>
-      </div>
+      <ScatterLegendSummary />
 
       <div className="h-[620px] w-full">
         <ResponsiveContainer width="100%" height="100%">
@@ -347,7 +382,7 @@ export function CoopetitionScatter({ data }: Props) {
 
             <Scatter data={scatterData} shape={shapeRenderer}>
               {scatterData.map((entry) => (
-                <Cell key={entry.id} fill={getRoleColor(entry.shortPrimaryRole, roleMap)} />
+                <Cell key={entry.id} fill={entry.color} />
               ))}
               <LabelList dataKey="brandName" content={labelRenderer} />
             </Scatter>
