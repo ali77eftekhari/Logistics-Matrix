@@ -33,6 +33,7 @@ import {
 } from "./dataService";
 import { CompanyProfileView } from "./components/CompanyProfileView";
 import { CoopetitionScatter } from "./components/CoopetitionScatter";
+import { E2HRadar } from "./components/E2HRadar";
 import { FakherCompanyFilterView } from "./components/FakherCompanyFilterView";
 import { IndustryCoverageView } from "./components/IndustryCoverageView";
 import { OpportunityTable } from "./components/OpportunityTable";
@@ -445,7 +446,7 @@ export function Dashboard() {
               </button>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <FilterField label="جست‌وجوی برند / صنعت / نقش">
                 <div className="relative">
                   <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -504,7 +505,7 @@ export function Dashboard() {
               />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <RangeFilterField
                 label="بازه Co-Op Avg"
                 range={filters.coOpRange}
@@ -540,6 +541,13 @@ export function Dashboard() {
             </div>
           </div>
         </section>
+
+        <SectionCard
+          title="E2H Ecosystem Radar"
+          description="رادار اکوسیستم E2H با فیلترهای مستقل، حلقه بندی نقش ها و تفکیک شفاف قطاع ها."
+        >
+          <E2HRadar entities={entities} />
+        </SectionCard>
 
         {filteredEntities.length === 0 ? (
           <EmptyState

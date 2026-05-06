@@ -95,6 +95,10 @@ export interface NormalizedEntity {
   strategicRelevanceScore: number;
   riskScore: number;
   opportunityScore: number;
+  e2hFlow: string;
+  e2hFlows: string[];
+  ecosystemRole: string;
+  flowCapabilities: string[];
   relationshipType: string;
   flowType: string;
   isFakherRelated: boolean;
@@ -141,7 +145,9 @@ export interface GlobalFilters {
   holding: string;
   industry: string;
   primaryRole: string;
+  ecosystemRole: string;
   secondaryRole: string;
+  e2hFlow: string;
   exchangeType: string;
   actualPartnership: string;
   potentialPartnership: string;
@@ -154,7 +160,9 @@ export interface GlobalFilterOptions {
   holdings: string[];
   industries: string[];
   primaryRoles: string[];
+  ecosystemRoles: string[];
   secondaryRoles: string[];
+  e2hFlows: string[];
   exchangeTypes: string[];
   actualPartnerships: string[];
   potentialPartnerships: string[];
@@ -344,6 +352,9 @@ const COLUMN_ALIASES: Record<string, keyof RawRecord> = {
   "value chain weakness": "valueChainWeakness",
   "actual partnerships": "actualPartnerships",
   "potential partnerships": "potentialPartnerships",
+  "e2h flow": "e2hFlow",
+  "ecosystem role": "ecosystemRole",
+  "flow capabilities": "flowCapabilities",
 };
 
 const LAYER_ALIASES: Record<string, LegacyLayer> = {
@@ -476,6 +487,47 @@ function rowsToRecords(rows: string[][], headerRowIndex: number, dataStartRowInd
   }, []);
 }
 
+function detectHeaderRowIndex(rows: string[][]): number {
+  let bestIndex = 0;
+  let bestScore = -1;
+
+  rows.slice(0, 6).forEach((row, index) => {
+    const score = row.reduce((count, cell) => {
+      const alias = COLUMN_ALIASES[normalizeHeaderKey(cell)];
+      return count + (alias ? 1 : 0);
+    }, 0);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  });
+
+  return bestIndex;
+}
+
+function detectDataStartRowIndex(rows: string[][], headerRowIndex: number): number {
+  let encounteredSpacer = false;
+
+  for (let index = headerRowIndex + 1; index < rows.length; index += 1) {
+    const row = rows[index] ?? [];
+    const hasValues = row.some((cell) => (cell ?? "").trim());
+
+    if (!hasValues) {
+      encounteredSpacer = true;
+      continue;
+    }
+
+    if (!encounteredSpacer) {
+      continue;
+    }
+
+    return index;
+  }
+
+  return headerRowIndex + 1;
+}
+
 function parseFakherCompanies(rows: string[][]): FakherCompanyConfig[] {
   const headers = rows[0] ?? [];
   const normalizedLayers = headers.slice(1).map((header) => LAYER_ALIASES[normalizeToken(header)] ?? null);
@@ -598,7 +650,9 @@ export function normalizeData(
   valueChainRows?: string[][],
   legendRows?: string[][],
 ): LogisticsDataset {
-  const ecosystemRecords = rowsToRecords(ecosystemRows, 0, 3);
+  const headerRowIndex = detectHeaderRowIndex(ecosystemRows);
+  const dataStartRowIndex = detectDataStartRowIndex(ecosystemRows, headerRowIndex);
+  const ecosystemRecords = rowsToRecords(ecosystemRows, headerRowIndex, dataStartRowIndex);
   const fakherCompanies = parseFakherCompanies(fakherRows);
   const fakherLookup = new Map(fakherCompanies.map((company) => [company.normalizedName, company]));
   const allDiscoveredLayers = unique([
@@ -620,6 +674,8 @@ export function normalizeData(
     const actualPartnerships = splitMultiValueField(record.actualPartnerships);
     const potentialPartnerships = splitMultiValueField(record.potentialPartnerships);
     const secondaryRoles = splitMultiValueField(record.secondaryRole, /[\/|,،\n]+/);
+    const e2hFlows = splitMultiValueField(record.e2hFlow);
+    const flowCapabilities = splitMultiValueField(record.flowCapabilities);
     const scoreBundle = calculateStrategicScores({
       coOpAvg: safeNumber(record.coOpAvg),
       compAvg: safeNumber(record.compAvg),
@@ -673,6 +729,10 @@ export function normalizeData(
       strategicRelevanceScore: scoreBundle.strategicRelevanceScore,
       riskScore: scoreBundle.riskScore,
       opportunityScore: scoreBundle.opportunityScore,
+      e2hFlow: record.e2hFlow || "",
+      e2hFlows,
+      ecosystemRole: record.ecosystemRole || "",
+      flowCapabilities,
       relationshipType,
       flowType,
       isFakherRelated,
@@ -812,7 +872,9 @@ export function createDefaultGlobalFilters(): GlobalFilters {
     holding: EMPTY_FILTER_VALUE,
     industry: EMPTY_FILTER_VALUE,
     primaryRole: EMPTY_FILTER_VALUE,
+    ecosystemRole: EMPTY_FILTER_VALUE,
     secondaryRole: EMPTY_FILTER_VALUE,
+    e2hFlow: EMPTY_FILTER_VALUE,
     exchangeType: EMPTY_FILTER_VALUE,
     actualPartnership: EMPTY_FILTER_VALUE,
     potentialPartnership: EMPTY_FILTER_VALUE,
@@ -830,7 +892,9 @@ export function getGlobalFilterOptions(entities: NormalizedEntity[]): GlobalFilt
     holdings: uniqueSorted(entities.map((entity) => entity.parentFirm)),
     industries: uniqueSorted(entities.map((entity) => entity.industry)),
     primaryRoles: uniqueSorted(entities.map((entity) => entity.primaryRole)),
+    ecosystemRoles: uniqueSorted(entities.map((entity) => entity.ecosystemRole)),
     secondaryRoles: uniqueSorted(entities.flatMap((entity) => entity.secondaryRoles)),
+    e2hFlows: uniqueSorted(entities.flatMap((entity) => entity.e2hFlows)),
     exchangeTypes: uniqueSorted(entities.flatMap((entity) => entity.exchangeTypes)),
     actualPartnerships: uniqueSorted(entities.flatMap((entity) => entity.actualPartnerships)),
     potentialPartnerships: uniqueSorted(entities.flatMap((entity) => entity.potentialPartnerships)),
@@ -849,6 +913,8 @@ export function applyGlobalFilters(entities: NormalizedEntity[], filters: Global
         entity.parentFirm,
         entity.primaryRole,
         entity.secondaryRole,
+        entity.ecosystemRole,
+        entity.e2hFlow,
         entity.exchangeType,
         entity.actualPartnerships.join(" "),
         entity.potentialPartnerships.join(" "),
@@ -861,12 +927,16 @@ export function applyGlobalFilters(entities: NormalizedEntity[], filters: Global
     if (filters.holding !== EMPTY_FILTER_VALUE && entity.parentFirm !== filters.holding) return false;
     if (filters.industry !== EMPTY_FILTER_VALUE && entity.industry !== filters.industry) return false;
     if (filters.primaryRole !== EMPTY_FILTER_VALUE && entity.primaryRole !== filters.primaryRole) return false;
+    if (filters.ecosystemRole !== EMPTY_FILTER_VALUE && entity.ecosystemRole !== filters.ecosystemRole) {
+      return false;
+    }
     if (
       filters.secondaryRole !== EMPTY_FILTER_VALUE &&
       !entity.secondaryRoles.includes(filters.secondaryRole)
     ) {
       return false;
     }
+    if (filters.e2hFlow !== EMPTY_FILTER_VALUE && !entity.e2hFlows.includes(filters.e2hFlow)) return false;
     if (
       filters.exchangeType !== EMPTY_FILTER_VALUE &&
       !entity.exchangeTypes.includes(filters.exchangeType)
