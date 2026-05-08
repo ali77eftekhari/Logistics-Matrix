@@ -2,6 +2,23 @@ import Papa from "papaparse";
 
 import fakherCsvFallback from "../imports/fakher-companies-export.csv?raw";
 import matrixCsvFallback from "../imports/Stakeholder_Mapping_-_Copy_of_Co-opetiton_Matrix.csv?raw";
+import {
+  getCanonicalValueChainLayers,
+  isOperationalValueChainLayer,
+  normalizeValueChainLayer,
+  sortByCanonicalLayerOrder,
+  type CanonicalValueChainLayer,
+} from "./valueChainConfig";
+export {
+  CANONICAL_VALUE_CHAIN_LAYERS,
+  formatValueChainLayer,
+  getCanonicalValueChainLayers,
+  LAYER_DISPLAY_LABELS,
+  mapLegacyLayerAlias,
+  normalizeValueChainLayer,
+  sortByCanonicalLayerOrder,
+} from "./valueChainConfig";
+export type { CanonicalValueChainLayer } from "./valueChainConfig";
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -39,20 +56,6 @@ const SHEET_TABS = {
   },
 } as const;
 
-const LEGACY_LAYER_ORDER = [
-  "Market",
-  "First Mile",
-  "Mid Mile",
-  "Fulfillment",
-  "Last Mile",
-  "Reverse",
-  "Fintech",
-  "Data",
-  "Infrastructure",
-  "Innovation",
-] as const;
-
-type LegacyLayer = (typeof LEGACY_LAYER_ORDER)[number];
 type SheetTabKey = keyof typeof SHEET_TABS;
 
 export interface CompanyData {
@@ -85,8 +88,8 @@ export interface NormalizedEntity {
   exchangeTypes: string[];
   valueChainStrenghts: string;
   valueChainWeakness: string;
-  strengthLayers: string[];
-  weaknessLayers: string[];
+  strengthLayers: CanonicalValueChainLayer[];
+  weaknessLayers: CanonicalValueChainLayer[];
   actualPartnerships: string[];
   potentialPartnerships: string[];
   exchangeTypeCount: number;
@@ -102,7 +105,7 @@ export interface NormalizedEntity {
   relationshipType: string;
   flowType: string;
   isFakherRelated: boolean;
-  layerStates: Record<string, { present: boolean; weak: boolean; source: "strength" | "weakness" | "fakher" | "none" }>;
+  layerStates: Record<CanonicalValueChainLayer, { present: boolean; weak: boolean; source: "strength" | "weakness" | "fakher" | "none" }>;
   recommendedMove: string;
   legacyLayers: Record<string, number>;
 }
@@ -111,19 +114,19 @@ export interface FakherCompanyConfig {
   id: string;
   name: string;
   normalizedName: string;
-  layers: Record<string, number>;
+  layers: Record<CanonicalValueChainLayer, number>;
 }
 
 export interface FakherHeatmapCompany {
   id: string;
   companyName: string;
   normalizedCompanyName: string;
-  coverageByLayer: Record<string, 0 | 1>;
+  coverageByLayer: Record<CanonicalValueChainLayer, 0 | 1>;
 }
 
 export interface FakherHeatmapDataset {
   companies: FakherHeatmapCompany[];
-  layers: string[];
+  layers: CanonicalValueChainLayer[];
   error: string | null;
 }
 
@@ -151,7 +154,7 @@ export interface LogisticsDataset {
   companies: CompanyData[];
   fakherCompanies: FakherCompanyConfig[];
   fakherHeatmap: FakherHeatmapDataset;
-  valueChainLayers: string[];
+  valueChainLayers: CanonicalValueChainLayer[];
   lastUpdated: string;
   source: "google-sheet" | "fallback";
   sheets: Partial<Record<SheetTabKey, LoadedSheet>>;
@@ -255,18 +258,6 @@ export interface StrategicRecommendations {
   industryOpportunities: IndustryOpportunityInsight[];
 }
 
-export const LAYER_DISPLAY_LABELS: Record<string, string> = {
-  Market: "بازار و اکوسیستم",
-  "First Mile": "فرست‌مایل",
-  "Mid Mile": "میدمایل",
-  Fulfillment: "فولفیلمنت",
-  "Last Mile": "لست‌مایل",
-  Reverse: "لجستیک معکوس",
-  Fintech: "فین‌تک",
-  Data: "داده",
-  Infrastructure: "زیرساخت",
-  Innovation: "نوآوری و استراتژی",
-};
 
 type RawRecord = Record<string, string>;
 
@@ -328,7 +319,7 @@ function round(value: number): number {
   return Number.parseFloat(value.toFixed(2));
 }
 
-function unique(values: string[]): string[] {
+function unique<T extends string>(values: T[]): T[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
@@ -348,6 +339,32 @@ function topValues(values: string[], count = 3): string[] {
 function average(values: number[]) {
   if (values.length === 0) return 0;
   return round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function createCanonicalLayerMap<T>(factory: () => T): Record<CanonicalValueChainLayer, T> {
+  return getCanonicalValueChainLayers().reduce<Record<CanonicalValueChainLayer, T>>((acc, layer) => {
+    acc[layer] = factory();
+    return acc;
+  }, {} as Record<CanonicalValueChainLayer, T>);
+}
+
+function createEmptyCanonicalLayerNumberMap(): Record<CanonicalValueChainLayer, number> {
+  return createCanonicalLayerMap(() => 0);
+}
+
+function createEmptyCanonicalLayerBinaryMap(): Record<CanonicalValueChainLayer, 0 | 1> {
+  return createCanonicalLayerMap(() => 0 as 0 | 1);
+}
+
+function createEmptyLayerStateMap(): Record<
+  CanonicalValueChainLayer,
+  { present: boolean; weak: boolean; source: "strength" | "weakness" | "fakher" | "none" }
+> {
+  return createCanonicalLayerMap(() => ({
+    present: false,
+    weak: false,
+    source: "none" as const,
+  }));
 }
 
 function toRecommendationEntity(entity: NormalizedEntity): RecommendationEntity {
@@ -371,55 +388,36 @@ function toRecommendationEntity(entity: NormalizedEntity): RecommendationEntity 
 const COLUMN_ALIASES: Record<string, keyof RawRecord> = {
   "brand name(firm name)": "brandName",
   "brandname(firmname)": "brandName",
+  "نام برند": "brandName",
   industry: "industry",
+  "حوزه کلیدی فعالیت": "industry",
   "parent firm (holding)": "parentFirm",
   "parentfirm(holding)": "parentFirm",
   activity: "activity",
   description: "description",
+  توضیح: "description",
   "co-op avg": "coOpAvg",
   "coop avg": "coOpAvg",
+  "میانگین همکاری": "coOpAvg",
   "comp avg": "compAvg",
+  "میانگین رقابت": "compAvg",
   "primary role": "primaryRole",
+  "نقش اولیه": "primaryRole",
   "secondary role": "secondaryRole",
+  "نقش ثانویه": "secondaryRole",
   "exchange type": "exchangeType",
   "value chain strenghts": "valueChainStrenghts",
   "value chain strengths": "valueChainStrenghts",
+  "توضیح نقش ها": "valueChainStrenghts",
   "value chain weakness": "valueChainWeakness",
   "actual partnerships": "actualPartnerships",
   "potential partnerships": "potentialPartnerships",
   "e2h flow": "e2hFlow",
   "ecosystem role": "ecosystemRole",
   "flow capabilities": "flowCapabilities",
+  "مشاوره پیشنهادی": "suggestedMove",
 };
 
-const LAYER_ALIASES: Record<string, LegacyLayer> = {
-  market: "Market",
-  ecosystem: "Market",
-  "بازارواکوسیستم": "Market",
-  "firstmile": "First Mile",
-  "first-mile": "First Mile",
-  "firstmile.": "First Mile",
-  "midmile": "Mid Mile",
-  "mid-mile": "Mid Mile",
-  storage: "Fulfillment",
-  hub: "Fulfillment",
-  fulfillment: "Fulfillment",
-  fullfillment: "Fulfillment",
-  fullfillments: "Fulfillment",
-  "lastmile": "Last Mile",
-  "last-mile": "Last Mile",
-  reverse: "Reverse",
-  reverselogistics: "Reverse",
-  fintech: "Fintech",
-  payment: "Fintech",
-  finance: "Fintech",
-  data: "Data",
-  cloud: "Data",
-  infrastructure: "Infrastructure",
-  innovation: "Innovation",
-  strategy: "Innovation",
-  strategyinnovations: "Innovation",
-};
 
 export function parseCSV(csvText: string): ParsedCsv {
   const rows = Papa.parse<string[]>(csvText, {
@@ -442,14 +440,15 @@ export function splitMultiValueField(
   );
 }
 
-export function extractValueChainLayers(value: string | undefined): string[] {
+export function extractValueChainLayers(value: string | undefined): CanonicalValueChainLayer[] {
   const items = splitMultiValueField(value, /[,،|\n]+/).flatMap((item) => item.split(/\s{2,}/));
-
-  return unique(
+  const normalizedLayers: CanonicalValueChainLayer[] = unique(
     items
-      .map((item) => LAYER_ALIASES[normalizeToken(item)] ?? null)
-      .filter((item): item is LegacyLayer => Boolean(item)),
+      .map((item) => normalizeValueChainLayer(item))
+      .filter((item): item is CanonicalValueChainLayer => Boolean(item)),
   );
+
+  return sortByCanonicalLayerOrder(normalizedLayers);
 }
 
 export function calculateStrategicScores(input: {
@@ -565,17 +564,19 @@ function detectDataStartRowIndex(rows: string[][], headerRowIndex: number): numb
 
 function parseFakherCompanies(rows: string[][]): FakherCompanyConfig[] {
   const headers = rows[0] ?? [];
-  const normalizedLayers = headers.slice(1).map((header) => LAYER_ALIASES[normalizeToken(header)] ?? null);
+  const normalizedLayers: Array<CanonicalValueChainLayer | null> = headers
+    .slice(1)
+    .map((header) => normalizeValueChainLayer(header));
 
   return rows.slice(1).reduce<FakherCompanyConfig[]>((companies, row, index) => {
     const name = row[0]?.trim();
     if (!name) return companies;
 
-    const layers = normalizedLayers.reduce<Record<string, number>>((acc, layer, layerIndex) => {
+    const layers = normalizedLayers.reduce<Record<CanonicalValueChainLayer, number>>((acc, layer, layerIndex) => {
       if (!layer) return acc;
       acc[layer] = safeNumber(row[layerIndex + 1]);
       return acc;
-    }, {});
+    }, createEmptyCanonicalLayerNumberMap());
 
     companies.push({
       id: `fakher-${index}`,
@@ -594,21 +595,25 @@ export function normalizeFakherCompaniesData(rows: string[][]): FakherHeatmapDat
   if (firstNonEmptyRowIndex === -1) {
     return {
       companies: [],
-      layers: [],
+      layers: [] as CanonicalValueChainLayer[],
       error: "Fakher Companies data is empty.",
     };
   }
 
   const headerRow = rows[firstNonEmptyRowIndex] ?? [];
-  const layers = headerRow
-    .slice(1)
-    .map((header) => (header ?? "").trim())
-    .filter(Boolean);
+  const layers: CanonicalValueChainLayer[] = sortByCanonicalLayerOrder(
+    unique(
+      headerRow
+        .slice(1)
+        .map((header) => normalizeValueChainLayer(header))
+        .filter((layer): layer is CanonicalValueChainLayer => Boolean(layer)),
+    ) as CanonicalValueChainLayer[],
+  );
 
   if (layers.length === 0) {
     return {
       companies: [],
-      layers: [],
+      layers: [] as CanonicalValueChainLayer[],
       error: "No value chain layers were found in the Fakher Companies sheet.",
     };
   }
@@ -621,10 +626,10 @@ export function normalizeFakherCompaniesData(rows: string[][]): FakherHeatmapDat
       return items;
     }
 
-    const coverageByLayer = layers.reduce<Record<string, 0 | 1>>((acc, layer, layerIndex) => {
+    const coverageByLayer = layers.reduce<Record<CanonicalValueChainLayer, 0 | 1>>((acc, layer, layerIndex) => {
       acc[layer] = parseBinaryFlag(row[layerIndex + 1]);
       return acc;
-    }, {});
+    }, createEmptyCanonicalLayerBinaryMap());
 
     items.push({
       id: `fakher-heatmap-${index}`,
@@ -709,7 +714,7 @@ function calculateRelationshipType(primaryRole: string, coOpAvg: number, compAvg
   return "Neutral";
 }
 
-function determineFlowType(exchangeTypes: string[], layers: string[]): string {
+function determineFlowType(exchangeTypes: string[], layers: CanonicalValueChainLayer[]): string {
   const normalizedExchange = exchangeTypes.map((item) => normalizeToken(item));
 
   if (normalizedExchange.some((item) => item.includes("data"))) return "Data";
@@ -719,17 +724,19 @@ function determineFlowType(exchangeTypes: string[], layers: string[]): string {
   if (normalizedExchange.some((item) => item.includes("goods") || item.includes("product"))) return "Goods";
   if (
     normalizedExchange.some((item) => item.includes("logistic") || item.includes("operation")) ||
-    layers.some((layer) =>
-      ["First Mile", "Mid Mile", "Fulfillment", "Last Mile", "Reverse"].includes(layer),
-    )
+    layers.some((layer) => isOperationalValueChainLayer(layer))
   ) {
     return "Operational";
   }
   return "Mixed";
 }
 
-function toLegacyLayerMap(strengthLayers: string[], weaknessLayers: string[], fakherLayers: Record<string, number>) {
-  return LEGACY_LAYER_ORDER.reduce<Record<string, number>>((acc, layer) => {
+function toLegacyLayerMap(
+  strengthLayers: CanonicalValueChainLayer[],
+  weaknessLayers: CanonicalValueChainLayer[],
+  fakherLayers: Record<CanonicalValueChainLayer, number>,
+) {
+  return getCanonicalValueChainLayers().reduce<Record<string, number>>((acc, layer) => {
     if ((fakherLayers[layer] ?? 0) > 0) {
       acc[layer] = Math.max(1, Math.min(3, Math.round(fakherLayers[layer] * 3)));
       return acc;
@@ -757,13 +764,13 @@ function createRecommendedMove(relationshipType: string, opportunityScore: numbe
 }
 
 function createLayerStates(
-  layers: string[],
-  strengthLayers: string[],
-  weaknessLayers: string[],
-  fakherLayers: Record<string, number>,
+  layers: CanonicalValueChainLayer[],
+  strengthLayers: CanonicalValueChainLayer[],
+  weaknessLayers: CanonicalValueChainLayer[],
+  fakherLayers: Record<CanonicalValueChainLayer, number>,
 ) {
   return layers.reduce<
-    Record<string, { present: boolean; weak: boolean; source: "strength" | "weakness" | "fakher" | "none" }>
+    Record<CanonicalValueChainLayer, { present: boolean; weak: boolean; source: "strength" | "weakness" | "fakher" | "none" }>
   >((acc, layer) => {
     const hasFakherPresence = (fakherLayers[layer] ?? 0) > 0;
     const hasStrength = strengthLayers.includes(layer);
@@ -775,7 +782,7 @@ function createLayerStates(
       source: hasFakherPresence ? "fakher" : hasStrength ? "strength" : hasWeakness ? "weakness" : "none",
     };
     return acc;
-  }, {});
+  }, createEmptyLayerStateMap());
 }
 
 export function normalizeData(
@@ -790,16 +797,7 @@ export function normalizeData(
   const fakherCompanies = parseFakherCompanies(fakherRows);
   const fakherHeatmap = normalizeFakherCompaniesData(fakherRows);
   const fakherLookup = new Map(fakherCompanies.map((company) => [company.normalizedName, company]));
-  const allDiscoveredLayers = unique([
-    ...LEGACY_LAYER_ORDER,
-    ...ecosystemRecords.flatMap((record) => [
-      ...extractValueChainLayers(record.valueChainStrenghts),
-      ...extractValueChainLayers(record.valueChainWeakness),
-    ]),
-    ...fakherCompanies.flatMap((company) =>
-      Object.keys(company.layers).filter((layer) => (company.layers[layer] ?? 0) > 0),
-    ),
-  ]);
+  const allDiscoveredLayers = getCanonicalValueChainLayers();
 
   const entities = ecosystemRecords.map<NormalizedEntity>((record, index) => {
     const brandName = record.brandName || `Entity ${index + 1}`;
@@ -830,12 +828,13 @@ export function normalizeData(
       Boolean(matchedFakher),
     );
     const flowType = determineFlowType(exchangeTypes, strengthLayers);
-    const legacyLayers = toLegacyLayerMap(strengthLayers, weaknessLayers, matchedFakher?.layers ?? {});
+    const fakherLayers = matchedFakher?.layers ?? createEmptyCanonicalLayerNumberMap();
+    const legacyLayers = toLegacyLayerMap(strengthLayers, weaknessLayers, fakherLayers);
     const layerStates = createLayerStates(
       allDiscoveredLayers,
       strengthLayers,
       weaknessLayers,
-      matchedFakher?.layers ?? {},
+      fakherLayers,
     );
 
     return {
@@ -843,7 +842,7 @@ export function normalizeData(
       brandName,
       industry: record.industry || "نامشخص",
       parentFirm: record.parentFirm || "مستقل",
-      activity: record.activity || "نامشخص",
+      activity: record.activity || record.industry || "نامشخص",
       description: record.description || "",
       coOpAvg: safeNumber(record.coOpAvg),
       compAvg: safeNumber(record.compAvg),
@@ -872,11 +871,13 @@ export function normalizeData(
       flowType,
       isFakherRelated,
       layerStates,
-      recommendedMove: createRecommendedMove(
-        relationshipType,
-        scoreBundle.opportunityScore,
-        scoreBundle.riskScore,
-      ),
+      recommendedMove:
+        record.suggestedMove ||
+        createRecommendedMove(
+          relationshipType,
+          scoreBundle.opportunityScore,
+          scoreBundle.riskScore,
+        ),
       legacyLayers,
     };
   });
@@ -1145,8 +1146,8 @@ export function getPrimaryRoleInsights(entities: NormalizedEntity[]): PrimaryRol
       const avgCoOp = round(items.reduce((sum, item) => sum + item.coOpAvg, 0) / items.length);
       const avgComp = round(items.reduce((sum, item) => sum + item.compAvg, 0) / items.length);
       const commonExchangeTypes = topValues(items.flatMap((item) => item.exchangeTypes), 4);
-      const commonStrengths = topValues(items.flatMap((item) => item.strengthLayers), 4);
-      const commonWeaknesses = topValues(items.flatMap((item) => item.weaknessLayers), 4);
+      const commonStrengths = sortByCanonicalLayerOrder(topValues(items.flatMap((item) => item.strengthLayers), 4));
+      const commonWeaknesses = sortByCanonicalLayerOrder(topValues(items.flatMap((item) => item.weaknessLayers), 4));
 
       const recommendedMove =
         avgCoOp >= 6 && avgComp < 5
@@ -1188,7 +1189,7 @@ export function getSecondaryRoleInsights(entities: NormalizedEntity[]): Secondar
       const averageCoOpAvg = round(items.reduce((sum, item) => sum + item.coOpAvg, 0) / items.length);
       const averageCompAvg = round(items.reduce((sum, item) => sum + item.compAvg, 0) / items.length);
       const dominantHoldings = topValues(items.map((item) => item.parentFirm), 3);
-      const orientation =
+      const orientation: SecondaryRoleInsight["orientation"] =
         averageCoOpAvg >= 5.5 && averageCompAvg < 5
           ? "partnership-heavy"
           : averageCompAvg >= 5.5 && averageCoOpAvg < 5

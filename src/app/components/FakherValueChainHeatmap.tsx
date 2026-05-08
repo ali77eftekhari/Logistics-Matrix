@@ -3,8 +3,9 @@ import { AlertCircle, Building2, Layers3, Search, TrendingDown, TrendingUp } fro
 
 import {
   calculateCoverageStats,
+  formatValueChainLayer,
   getCellStatus,
-  LAYER_DISPLAY_LABELS,
+  type CanonicalValueChainLayer,
   type FakherHeatmapDataset,
 } from "../dataService";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -44,13 +45,9 @@ function LegendItem({ label, className }: { label: string; className: string }) 
   );
 }
 
-function formatLayerName(layer: string) {
-  return LAYER_DISPLAY_LABELS[layer] ?? layer;
-}
-
 export function FakherValueChainHeatmap({ dataset }: Props) {
   const [search, setSearch] = useState("");
-  const [selectedLayer, setSelectedLayer] = useState(SHOW_ALL_LAYERS);
+  const [selectedLayer, setSelectedLayer] = useState<CanonicalValueChainLayer | typeof SHOW_ALL_LAYERS>(SHOW_ALL_LAYERS);
   const deferredSearch = useDeferredValue(search);
 
   const stats = useMemo(() => calculateCoverageStats(dataset), [dataset]);
@@ -100,12 +97,18 @@ export function FakherValueChainHeatmap({ dataset }: Props) {
 
         <select
           value={selectedLayer}
-          onChange={(event) => setSelectedLayer(event.target.value)}
+          onChange={(event) =>
+            setSelectedLayer(
+              event.target.value === SHOW_ALL_LAYERS
+                ? SHOW_ALL_LAYERS
+                : (event.target.value as CanonicalValueChainLayer),
+            )
+          }
           className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 focus:border-slate-400 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
         >
           {layerOptions.map((option) => (
             <option key={option} value={option}>
-              {option === SHOW_ALL_LAYERS ? "Show all companies" : `Only with presence in ${formatLayerName(option)}`}
+              {option === SHOW_ALL_LAYERS ? "Show all companies" : `Only with presence in ${formatValueChainLayer(option)}`}
             </option>
           ))}
         </select>
@@ -128,12 +131,12 @@ export function FakherValueChainHeatmap({ dataset }: Props) {
         <InsightChip label="Average coverage" value={`${stats.averageCoveragePercentage}%`} icon={TrendingUp} />
         <InsightChip
           label="Strongest layer"
-          value={stats.strongestLayer ? formatLayerName(stats.strongestLayer) : "-"}
+          value={stats.strongestLayer ? formatValueChainLayer(stats.strongestLayer) : "-"}
           icon={TrendingUp}
         />
         <InsightChip
           label="Weakest layer"
-          value={stats.weakestLayer ? formatLayerName(stats.weakestLayer) : "-"}
+          value={stats.weakestLayer ? formatValueChainLayer(stats.weakestLayer) : "-"}
           icon={TrendingDown}
         />
       </div>
@@ -156,7 +159,7 @@ export function FakherValueChainHeatmap({ dataset }: Props) {
                     key={layer}
                     className="sticky top-0 z-20 min-w-[88px] rounded-2xl border border-slate-200 bg-white px-2 py-3 text-center text-[11px] font-semibold leading-5 text-slate-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
                   >
-                    {formatLayerName(layer)}
+                    {formatValueChainLayer(layer)}
                   </th>
                 ))}
               </tr>
@@ -177,7 +180,7 @@ export function FakherValueChainHeatmap({ dataset }: Props) {
                           <TooltipTrigger asChild>
                             <button
                               type="button"
-                              aria-label={`${company.companyName} - ${formatLayerName(layer)} - ${isPresent ? "Present" : "Not Present"}`}
+                              aria-label={`${company.companyName} - ${formatValueChainLayer(layer)} - ${isPresent ? "Present" : "Not Present"}`}
                               className={`h-11 w-full min-w-[76px] rounded-2xl border transition-transform hover:scale-[1.02] ${
                                 isPresent
                                   ? "border-emerald-200 bg-emerald-500/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] dark:border-emerald-800 dark:bg-emerald-500/75"
@@ -187,7 +190,7 @@ export function FakherValueChainHeatmap({ dataset }: Props) {
                           </TooltipTrigger>
                           <TooltipContent side="top" sideOffset={8} className="rounded-xl bg-slate-950 px-3 py-2 text-left text-slate-50 dark:bg-slate-100 dark:text-slate-950">
                             <div className="font-semibold">{company.companyName}</div>
-                            <div className="mt-1 text-[11px] opacity-80">{formatLayerName(layer)}</div>
+                            <div className="mt-1 text-[11px] opacity-80">{formatValueChainLayer(layer)}</div>
                             <div className="mt-1 text-[11px]">{isPresent ? "Status: Present" : "Status: Not Present"}</div>
                           </TooltipContent>
                         </Tooltip>

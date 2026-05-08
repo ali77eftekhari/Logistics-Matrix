@@ -2,7 +2,7 @@ import type {
   PrimaryRoleInsight,
   SecondaryRoleInsight,
 } from "../dataService";
-import { LAYER_DISPLAY_LABELS } from "../dataService";
+import { formatValueChainLayer, sortByCanonicalLayerOrder } from "../dataService";
 
 interface Props {
   primaryInsights: PrimaryRoleInsight[];
@@ -10,18 +10,19 @@ interface Props {
 }
 
 function ChipGroup({ items }: { items: string[] }) {
+  const orderedItems = sortByCanonicalLayerOrder(items);
   if (items.length === 0) {
     return <span className="text-xs text-slate-500 dark:text-slate-400">ثبت نشده</span>;
   }
 
   return (
     <div className="flex flex-wrap gap-2">
-      {items.map((item) => (
+      {orderedItems.map((item) => (
         <span
           key={item}
           className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300"
         >
-          {LAYER_DISPLAY_LABELS[item] ?? item}
+          {formatValueChainLayer(item)}
         </span>
       ))}
     </div>

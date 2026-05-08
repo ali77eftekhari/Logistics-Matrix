@@ -16,9 +16,11 @@ import {
 
 import {
   applyGlobalFilters,
+  CANONICAL_VALUE_CHAIN_LAYERS,
   createDefaultGlobalFilters,
   EMPTY_FILTER_VALUE,
   formatLastUpdated,
+  type CanonicalValueChainLayer,
   type FakherCompanyConfig,
   type FakherHeatmapDataset,
   getFakherRelatedEntities,
@@ -207,7 +209,7 @@ export function Dashboard() {
     layers: [],
     error: null,
   });
-  const [valueChainLayers, setValueChainLayers] = useState<string[]>([]);
+  const [valueChainLayers, setValueChainLayers] = useState<CanonicalValueChainLayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [source, setSource] = useState<"google-sheet" | "fallback">("google-sheet");
@@ -281,7 +283,7 @@ export function Dashboard() {
     const highRiskCompetitors = entities.filter(
       (item) => item.relationshipType === "Competitor" && item.compAvg >= 6,
     ).length;
-    const valueChainGaps = LEGACY_GAP_LAYERS.filter(
+    const valueChainGaps = CANONICAL_VALUE_CHAIN_LAYERS.filter(
       (layer) => !entities.some((item) => (item.legacyLayers[layer] ?? 0) >= 2),
     ).length;
 
@@ -640,15 +642,3 @@ export function Dashboard() {
   );
 }
 
-const LEGACY_GAP_LAYERS = [
-  "Market",
-  "First Mile",
-  "Mid Mile",
-  "Fulfillment",
-  "Last Mile",
-  "Reverse",
-  "Fintech",
-  "Data",
-  "Infrastructure",
-  "Innovation",
-];

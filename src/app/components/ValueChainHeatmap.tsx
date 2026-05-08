@@ -2,11 +2,16 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, Building2, Search, X } from "lucide-react";
 import { clsx } from "clsx";
 
-import { LAYER_DISPLAY_LABELS, NormalizedEntity } from "../dataService";
+import {
+  formatValueChainLayer,
+  NormalizedEntity,
+  sortByCanonicalLayerOrder,
+  type CanonicalValueChainLayer,
+} from "../dataService";
 
 interface Props {
   entities: NormalizedEntity[];
-  layers: string[];
+  layers: CanonicalValueChainLayer[];
 }
 
 const EMPTY_FILTER = "همه";
@@ -103,8 +108,8 @@ function DetailDrawer({
         </div>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          <TagList title="لایه‌های قوت" items={entity.strengthLayers} tone="emerald" />
-          <TagList title="لایه‌های ضعف" items={entity.weaknessLayers} tone="rose" />
+          <TagList title="لایه‌های قوت" items={entity.strengthLayers} tone="emerald" canonicalOrder />
+          <TagList title="لایه‌های ضعف" items={entity.weaknessLayers} tone="rose" canonicalOrder />
         </div>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -129,10 +134,12 @@ function TagList({
   title,
   items,
   tone,
+  canonicalOrder = false,
 }: {
   title: string;
   items: string[];
   tone: "emerald" | "rose" | "amber" | "slate";
+  canonicalOrder?: boolean;
 }) {
   const toneClasses =
     tone === "emerald"
@@ -150,9 +157,9 @@ function TagList({
         {items.length === 0 ? (
           <span className="text-xs text-slate-500 dark:text-slate-400">موردی ثبت نشده است.</span>
         ) : (
-          items.map((item) => (
+          (canonicalOrder ? sortByCanonicalLayerOrder(items) : items).map((item) => (
             <span key={item} className={`rounded-full px-3 py-1 text-xs font-medium ${toneClasses}`}>
-              {LAYER_DISPLAY_LABELS[item] ?? item}
+              {formatValueChainLayer(item)}
             </span>
           ))
         )}
@@ -161,7 +168,7 @@ function TagList({
   );
 }
 
-function getCellTone(entity: NormalizedEntity, layer: string) {
+function getCellTone(entity: NormalizedEntity, layer: CanonicalValueChainLayer) {
   const state = entity.layerStates[layer];
   if (!state) {
     return "bg-slate-100 text-slate-300 dark:bg-slate-800/80 dark:text-slate-700 border-slate-200 dark:border-slate-700";
@@ -209,7 +216,7 @@ export function ValueChainHeatmap({ entities, layers }: Props) {
     };
   }, [entities]);
 
-  const visibleLayers = useMemo(() => layers.filter(Boolean), [layers]);
+  const visibleLayers = useMemo(() => sortByCanonicalLayerOrder(layers.filter(Boolean)), [layers]);
 
   const filteredEntities = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -378,7 +385,7 @@ export function ValueChainHeatmap({ entities, layers }: Props) {
                     key={layer}
                     className="sticky top-0 z-20 min-w-[92px] border-b border-slate-200 bg-white px-2 py-4 text-center text-xs font-semibold text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
                   >
-                    <span className="inline-block max-w-[84px] leading-5">{LAYER_DISPLAY_LABELS[layer] ?? layer}</span>
+                    <span className="inline-block max-w-[84px] leading-5">{formatValueChainLayer(layer)}</span>
                   </th>
                 ))}
               </tr>
@@ -416,8 +423,8 @@ export function ValueChainHeatmap({ entities, layers }: Props) {
                             `نقش اصلی: ${entity.primaryRole}`,
                             `نقش ثانویه: ${entity.secondaryRole || "-"}`,
                             `مبادله: ${entity.exchangeType || "-"}`,
-                            `قوت‌ها: ${entity.strengthLayers.map((item) => LAYER_DISPLAY_LABELS[item] ?? item).join("، ") || "-"}`,
-                            `ضعف‌ها: ${entity.weaknessLayers.map((item) => LAYER_DISPLAY_LABELS[item] ?? item).join("، ") || "-"}`,
+                            `قوت‌ها: ${entity.strengthLayers.map((item) => formatValueChainLayer(item)).join("، ") || "-"}`,
+                            `ضعف‌ها: ${entity.weaknessLayers.map((item) => formatValueChainLayer(item)).join("، ") || "-"}`,
                             `همکاری فعلی: ${entity.actualPartnerships.join("، ") || "-"}`,
                             `همکاری بالقوه: ${entity.potentialPartnerships.join("، ") || "-"}`,
                           ].join("\n")}

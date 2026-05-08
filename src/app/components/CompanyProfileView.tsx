@@ -1,12 +1,26 @@
 import { useMemo, useState } from "react";
 
-import { LAYER_DISPLAY_LABELS, type NormalizedEntity } from "../dataService";
+import {
+  formatValueChainLayer,
+  getCanonicalValueChainLayers,
+  sortByCanonicalLayerOrder,
+  type NormalizedEntity,
+} from "../dataService";
 
 interface Props {
   entities: NormalizedEntity[];
 }
 
-function ToneChips({ items, tone }: { items: string[]; tone: "emerald" | "rose" | "amber" | "slate" }) {
+function ToneChips({
+  items,
+  tone,
+  canonicalOrder = false,
+}: {
+  items: string[];
+  tone: "emerald" | "rose" | "amber" | "slate";
+  canonicalOrder?: boolean;
+}) {
+  const visibleItems = canonicalOrder ? sortByCanonicalLayerOrder(items) : items;
   const classes =
     tone === "emerald"
       ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
@@ -22,9 +36,9 @@ function ToneChips({ items, tone }: { items: string[]; tone: "emerald" | "rose" 
 
   return (
     <div className="flex flex-wrap gap-2">
-      {items.map((item) => (
+      {visibleItems.map((item) => (
         <span key={item} className={`rounded-full px-3 py-1 text-xs font-medium ${classes}`}>
-          {LAYER_DISPLAY_LABELS[item] ?? item}
+          {formatValueChainLayer(item)}
         </span>
       ))}
     </div>
@@ -32,7 +46,9 @@ function ToneChips({ items, tone }: { items: string[]; tone: "emerald" | "rose" 
 }
 
 function MiniHeatmap({ entity }: { entity: NormalizedEntity }) {
-  const visible = Object.keys(entity.layerStates).filter(Boolean).slice(0, 10);
+  const visible = getCanonicalValueChainLayers()
+    .filter((layer) => entity.layerStates[layer])
+    .slice(0, 8);
 
   return (
     <div className="grid grid-cols-5 gap-2 sm:grid-cols-10">
@@ -44,7 +60,7 @@ function MiniHeatmap({ entity }: { entity: NormalizedEntity }) {
             : "bg-emerald-100 border-emerald-300 dark:bg-emerald-950/40 dark:border-emerald-900"
           : "bg-slate-100 border-slate-200 dark:bg-slate-800 dark:border-slate-700";
 
-        return <div key={layer} title={LAYER_DISPLAY_LABELS[layer] ?? layer} className={`h-9 rounded-xl border ${classes}`} />;
+        return <div key={layer} title={formatValueChainLayer(layer)} className={`h-9 rounded-xl border ${classes}`} />;
       })}
     </div>
   );
@@ -107,13 +123,13 @@ export function CompanyProfileView({ entities }: Props) {
               <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
                 <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Strengths</div>
                 <div className="mt-2">
-                  <ToneChips items={entity.strengthLayers} tone="emerald" />
+                  <ToneChips items={entity.strengthLayers} tone="emerald" canonicalOrder />
                 </div>
               </div>
               <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
                 <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Weaknesses</div>
                 <div className="mt-2">
-                  <ToneChips items={entity.weaknessLayers} tone="rose" />
+                  <ToneChips items={entity.weaknessLayers} tone="rose" canonicalOrder />
                 </div>
               </div>
             </div>
