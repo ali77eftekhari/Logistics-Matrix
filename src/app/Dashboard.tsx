@@ -20,6 +20,7 @@ import {
   EMPTY_FILTER_VALUE,
   formatLastUpdated,
   type FakherCompanyConfig,
+  type FakherHeatmapDataset,
   getFakherRelatedEntities,
   getStrategicRecommendations,
   getGlobalFilterOptions,
@@ -35,6 +36,7 @@ import { CompanyProfileView } from "./components/CompanyProfileView";
 import { CoopetitionScatter } from "./components/CoopetitionScatter";
 import { E2HRadar } from "./components/E2HRadar";
 import { FakherCompanyFilterView } from "./components/FakherCompanyFilterView";
+import { FakherValueChainHeatmap } from "./components/FakherValueChainHeatmap";
 import { IndustryCoverageView } from "./components/IndustryCoverageView";
 import { OpportunityTable } from "./components/OpportunityTable";
 import { RoleInsightsView } from "./components/RoleInsightsView";
@@ -200,6 +202,11 @@ function EmptyState({ title, description }: { title: string; description: string
 export function Dashboard() {
   const [entities, setEntities] = useState<NormalizedEntity[]>([]);
   const [fakherCompanies, setFakherCompanies] = useState<FakherCompanyConfig[]>([]);
+  const [fakherHeatmap, setFakherHeatmap] = useState<FakherHeatmapDataset>({
+    companies: [],
+    layers: [],
+    error: null,
+  });
   const [valueChainLayers, setValueChainLayers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -216,6 +223,7 @@ export function Dashboard() {
       const result = await loadAllSheets();
       setEntities(result.entities);
       setFakherCompanies(result.fakherCompanies);
+      setFakherHeatmap(result.fakherHeatmap);
       setValueChainLayers(result.valueChainLayers);
       setSource(result.source);
       setLastUpdated(result.lastUpdated);
@@ -572,6 +580,13 @@ export function Dashboard() {
               <div className="rounded-[24px] bg-slate-50/90 p-3 dark:bg-slate-950/40">
                 <ValueChainHeatmap entities={filteredEntities} layers={valueChainLayers} />
               </div>
+            </SectionCard>
+
+            <SectionCard
+              title="Fakher Companies Value Chain Heatmap"
+              description="Presence of Fakher Holding companies across logistics value chain layers"
+            >
+              <FakherValueChainHeatmap dataset={fakherHeatmap} />
             </SectionCard>
 
             <SectionCard

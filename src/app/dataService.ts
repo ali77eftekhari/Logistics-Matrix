@@ -114,6 +114,27 @@ export interface FakherCompanyConfig {
   layers: Record<string, number>;
 }
 
+export interface FakherHeatmapCompany {
+  id: string;
+  companyName: string;
+  normalizedCompanyName: string;
+  coverageByLayer: Record<string, 0 | 1>;
+}
+
+export interface FakherHeatmapDataset {
+  companies: FakherHeatmapCompany[];
+  layers: string[];
+  error: string | null;
+}
+
+export interface FakherCoverageStats {
+  totalCompanies: number;
+  totalLayers: number;
+  averageCoveragePercentage: number;
+  strongestLayer: string | null;
+  weakestLayer: string | null;
+}
+
 export interface ParsedCsv {
   rows: string[][];
 }
@@ -129,6 +150,7 @@ export interface LogisticsDataset {
   entities: NormalizedEntity[];
   companies: CompanyData[];
   fakherCompanies: FakherCompanyConfig[];
+  fakherHeatmap: FakherHeatmapDataset;
   valueChainLayers: string[];
   lastUpdated: string;
   source: "google-sheet" | "fallback";
@@ -287,6 +309,19 @@ function normalizeName(value: string | undefined): string {
 function safeNumber(value: string | undefined): number {
   const parsed = Number.parseFloat((value ?? "").trim());
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseBinaryFlag(value: string | undefined): 0 | 1 {
+  const normalized = (value ?? "").trim();
+  if (!normalized) return 0;
+
+  const numeric = Number.parseFloat(normalized);
+  if (Number.isFinite(numeric)) {
+    return numeric >= 1 ? 1 : 0;
+  }
+
+  const lowered = normalizeHeaderKey(normalized);
+  return ["true", "yes", "present", "active"].includes(lowered) ? 1 : 0;
 }
 
 function round(value: number): number {
@@ -553,6 +588,105 @@ function parseFakherCompanies(rows: string[][]): FakherCompanyConfig[] {
   }, []);
 }
 
+export function normalizeFakherCompaniesData(rows: string[][]): FakherHeatmapDataset {
+  const firstNonEmptyRowIndex = rows.findIndex((row) => row.some((cell) => (cell ?? "").trim()));
+
+  if (firstNonEmptyRowIndex === -1) {
+    return {
+      companies: [],
+      layers: [],
+      error: "Fakher Companies data is empty.",
+    };
+  }
+
+  const headerRow = rows[firstNonEmptyRowIndex] ?? [];
+  const layers = headerRow
+    .slice(1)
+    .map((header) => (header ?? "").trim())
+    .filter(Boolean);
+
+  if (layers.length === 0) {
+    return {
+      companies: [],
+      layers: [],
+      error: "No value chain layers were found in the Fakher Companies sheet.",
+    };
+  }
+
+  const companies = rows.slice(firstNonEmptyRowIndex + 1).reduce<FakherHeatmapCompany[]>((items, row, index) => {
+    const companyName = row[0]?.trim();
+    const hasRowValues = row.some((cell) => (cell ?? "").trim());
+
+    if (!hasRowValues || !companyName) {
+      return items;
+    }
+
+    const coverageByLayer = layers.reduce<Record<string, 0 | 1>>((acc, layer, layerIndex) => {
+      acc[layer] = parseBinaryFlag(row[layerIndex + 1]);
+      return acc;
+    }, {});
+
+    items.push({
+      id: `fakher-heatmap-${index}`,
+      companyName,
+      normalizedCompanyName: normalizeName(companyName),
+      coverageByLayer,
+    });
+
+    return items;
+  }, []);
+
+  if (companies.length === 0) {
+    return {
+      companies: [],
+      layers,
+      error: "No company rows were found in the Fakher Companies sheet.",
+    };
+  }
+
+  return {
+    companies,
+    layers,
+    error: null,
+  };
+}
+
+export function calculateCoverageStats(dataset: FakherHeatmapDataset): FakherCoverageStats {
+  const { companies, layers } = dataset;
+
+  if (companies.length === 0 || layers.length === 0) {
+    return {
+      totalCompanies: companies.length,
+      totalLayers: layers.length,
+      averageCoveragePercentage: 0,
+      strongestLayer: null,
+      weakestLayer: null,
+    };
+  }
+
+  const layerTotals = layers.map((layer) => ({
+    layer,
+    total: companies.reduce((sum, company) => sum + (company.coverageByLayer[layer] ?? 0), 0),
+  }));
+
+  const totalCoverage = layerTotals.reduce((sum, item) => sum + item.total, 0);
+  const totalPossibleCoverage = companies.length * layers.length;
+  const strongestLayer = [...layerTotals].sort((a, b) => b.total - a.total || a.layer.localeCompare(b.layer, "fa"))[0];
+  const weakestLayer = [...layerTotals].sort((a, b) => a.total - b.total || a.layer.localeCompare(b.layer, "fa"))[0];
+
+  return {
+    totalCompanies: companies.length,
+    totalLayers: layers.length,
+    averageCoveragePercentage: round((totalCoverage / totalPossibleCoverage) * 100),
+    strongestLayer: strongestLayer?.layer ?? null,
+    weakestLayer: weakestLayer?.layer ?? null,
+  };
+}
+
+export function getCellStatus(value: unknown): "present" | "not-present" {
+  return parseBinaryFlag(typeof value === "string" ? value : String(value ?? "")) === 1 ? "present" : "not-present";
+}
+
 function calculateRelationshipType(primaryRole: string, coOpAvg: number, compAvg: number, isOwned: boolean) {
   const normalizedRole = normalizeHeaderKey(primaryRole);
 
@@ -654,6 +788,7 @@ export function normalizeData(
   const dataStartRowIndex = detectDataStartRowIndex(ecosystemRows, headerRowIndex);
   const ecosystemRecords = rowsToRecords(ecosystemRows, headerRowIndex, dataStartRowIndex);
   const fakherCompanies = parseFakherCompanies(fakherRows);
+  const fakherHeatmap = normalizeFakherCompaniesData(fakherRows);
   const fakherLookup = new Map(fakherCompanies.map((company) => [company.normalizedName, company]));
   const allDiscoveredLayers = unique([
     ...LEGACY_LAYER_ORDER,
@@ -773,6 +908,7 @@ export function normalizeData(
     entities,
     companies,
     fakherCompanies,
+    fakherHeatmap,
     valueChainLayers,
     lastUpdated: new Date().toISOString(),
     source: "google-sheet",
