@@ -239,6 +239,14 @@ export interface RecommendationEntity {
   recommendedMove: string;
 }
 
+export interface DashboardStats {
+  totalBrands: number;
+  totalHoldings: number;
+  highOpportunityPartners: number;
+  highRiskCompetitors: number;
+  valueChainGaps: number;
+}
+
 export interface IndustryOpportunityInsight {
   industry: string;
   opportunityScore: number;
@@ -339,6 +347,10 @@ function topValues(values: string[], count = 3): string[] {
 function average(values: number[]) {
   if (values.length === 0) return 0;
   return round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+export function buildFilterOptionList(values: string[], emptyOption = EMPTY_FILTER_VALUE): string[] {
+  return [emptyOption, ...Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, "fa"))];
 }
 
 function createCanonicalLayerMap<T>(factory: () => T): Record<CanonicalValueChainLayer, T> {
@@ -1022,19 +1034,56 @@ export function createDefaultGlobalFilters(): GlobalFilters {
 }
 
 export function getGlobalFilterOptions(entities: NormalizedEntity[]): GlobalFilterOptions {
-  const uniqueSorted = (values: string[]) =>
-    [EMPTY_FILTER_VALUE, ...Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, "fa"))];
+  return {
+    holdings: buildFilterOptionList(entities.map((entity) => entity.parentFirm)),
+    industries: buildFilterOptionList(entities.map((entity) => entity.industry)),
+    primaryRoles: buildFilterOptionList(entities.map((entity) => entity.primaryRole)),
+    ecosystemRoles: buildFilterOptionList(entities.map((entity) => entity.ecosystemRole)),
+    secondaryRoles: buildFilterOptionList(entities.flatMap((entity) => entity.secondaryRoles)),
+    e2hFlows: buildFilterOptionList(entities.flatMap((entity) => entity.e2hFlows)),
+    exchangeTypes: buildFilterOptionList(entities.flatMap((entity) => entity.exchangeTypes)),
+    actualPartnerships: buildFilterOptionList(entities.flatMap((entity) => entity.actualPartnerships)),
+    potentialPartnerships: buildFilterOptionList(entities.flatMap((entity) => entity.potentialPartnerships)),
+  };
+}
+
+export function mapEntitiesToCompanies(entities: NormalizedEntity[]): CompanyData[] {
+  return entities.map((entity) => ({
+    id: entity.id,
+    brand: entity.brandName,
+    category: entity.industry,
+    cooperationScore: entity.coOpAvg,
+    competitionScore: entity.compAvg,
+    primaryRole: entity.primaryRole,
+    suggestedMove: entity.recommendedMove,
+    flowType: entity.flowType,
+    strategicImportance: entity.strategicRelevanceScore,
+    relationshipType: entity.relationshipType,
+    layers: entity.legacyLayers,
+  }));
+}
+
+export function calculateDashboardStats(entities: NormalizedEntity[]): DashboardStats {
+  const totalBrands = entities.length;
+  const totalHoldings = new Set(entities.map((item) => item.parentFirm).filter(Boolean)).size;
+  const highOpportunityPartners = entities.filter(
+    (item) =>
+      (item.relationshipType === "Partner" || item.relationshipType === "Opportunity") &&
+      item.strategicRelevanceScore >= 5,
+  ).length;
+  const highRiskCompetitors = entities.filter(
+    (item) => item.relationshipType === "Competitor" && item.compAvg >= 6,
+  ).length;
+  const valueChainGaps = getCanonicalValueChainLayers().filter(
+    (layer) => !entities.some((item) => (item.legacyLayers[layer] ?? 0) >= 2),
+  ).length;
 
   return {
-    holdings: uniqueSorted(entities.map((entity) => entity.parentFirm)),
-    industries: uniqueSorted(entities.map((entity) => entity.industry)),
-    primaryRoles: uniqueSorted(entities.map((entity) => entity.primaryRole)),
-    ecosystemRoles: uniqueSorted(entities.map((entity) => entity.ecosystemRole)),
-    secondaryRoles: uniqueSorted(entities.flatMap((entity) => entity.secondaryRoles)),
-    e2hFlows: uniqueSorted(entities.flatMap((entity) => entity.e2hFlows)),
-    exchangeTypes: uniqueSorted(entities.flatMap((entity) => entity.exchangeTypes)),
-    actualPartnerships: uniqueSorted(entities.flatMap((entity) => entity.actualPartnerships)),
-    potentialPartnerships: uniqueSorted(entities.flatMap((entity) => entity.potentialPartnerships)),
+    totalBrands,
+    totalHoldings,
+    highOpportunityPartners,
+    highRiskCompetitors,
+    valueChainGaps,
   };
 }
 

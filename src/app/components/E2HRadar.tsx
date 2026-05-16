@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 
+import { buildFilterOptionList } from "../dataService";
 import type { NormalizedEntity } from "../dataService";
 
 interface Props {
@@ -146,10 +147,6 @@ function normalizeRole(role: string): RoleName {
   if (normalized === "orchestrator") return "Orchestrator";
   if (normalized === "realizer") return "Realizer";
   return "Enabler";
-}
-
-function uniqueSorted(values: string[]) {
-  return [FILTER_ALL, ...Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, "fa"))];
 }
 
 function truncateLabel(value: string, maxLength = 19) {
@@ -467,10 +464,10 @@ export function E2HRadar({ entities }: Props) {
 
   const filterOptions = useMemo(
     () => ({
-      holdings: uniqueSorted(e2hEntities.map((entity) => entity.parentFirm)),
-      industries: uniqueSorted(e2hEntities.map((entity) => entity.industry)),
-      flows: uniqueSorted(e2hEntities.flatMap((entity) => entity.e2hFlows)),
-      roles: uniqueSorted(e2hEntities.map((entity) => entity.ecosystemRole)),
+      holdings: buildFilterOptionList(e2hEntities.map((entity) => entity.parentFirm), FILTER_ALL),
+      industries: buildFilterOptionList(e2hEntities.map((entity) => entity.industry), FILTER_ALL),
+      flows: buildFilterOptionList(e2hEntities.flatMap((entity) => entity.e2hFlows), FILTER_ALL),
+      roles: buildFilterOptionList(e2hEntities.map((entity) => entity.ecosystemRole), FILTER_ALL),
     }),
     [e2hEntities],
   );

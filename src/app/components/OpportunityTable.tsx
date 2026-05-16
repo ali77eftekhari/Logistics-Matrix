@@ -1,51 +1,48 @@
+import { useMemo } from "react";
+import { AlertTriangle, ArrowUpRight, RefreshCcw, Zap } from "lucide-react";
+
 import { CompanyData } from "../dataService";
-import { ArrowUpRight, AlertTriangle, RefreshCcw, Zap } from "lucide-react";
 
 interface Props {
   data: CompanyData[];
 }
 
-export function OpportunityTable({ data }: Props) {
-  // Top Partners: High Coop >= 6, Low Comp < 5
-  const topPartners = data.filter(d => d.cooperationScore >= 6 && d.competitionScore < 5)
-                          .sort((a, b) => b.strategicImportance - a.strategicImportance).slice(0, 5);
-                          
-  // High-Risk: Low Coop < 5, High Comp >= 6
-  const highRisk = data.filter(d => d.cooperationScore < 5 && d.competitionScore >= 6)
-                       .sort((a, b) => b.strategicImportance - a.strategicImportance).slice(0, 5);
-                       
-  // Coopetitors: High Coop >= 6, High Comp >= 6
-  const coopetitors = data.filter(d => d.cooperationScore >= 5 && d.competitionScore >= 5 && d.relationshipType.includes("Coopetitor"))
-                          .sort((a, b) => b.strategicImportance - a.strategicImportance).slice(0, 5);
-                          
-  // Quick Wins / Opportunity: Strategic importance >= 5 but currently low relation, or mapped as opportunity
-  const quickWins = data.filter(d => d.relationshipType === "Opportunity" || (d.strategicImportance >= 4 && d.cooperationScore < 4 && d.competitionScore < 4))
-                        .sort((a, b) => b.strategicImportance - a.strategicImportance).slice(0, 5);
+interface OpportunityCategoryCardProps {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  colorClass: string;
+  items: CompanyData[];
+}
 
-  const TableCard = ({ title, icon: Icon, colorClass, items }: any) => (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-      <div className={`p-4 flex items-center gap-2 border-b border-slate-100 dark:border-slate-800 font-bold ${colorClass}`}>
-        <Icon className="w-5 h-5" />
+function OpportunityCategoryCard({
+  title,
+  icon: Icon,
+  colorClass,
+  items,
+}: OpportunityCategoryCardProps) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className={`flex items-center gap-2 border-b border-slate-100 p-4 font-bold dark:border-slate-800 ${colorClass}`}>
+        <Icon className="h-5 w-5" />
         {title}
       </div>
       <div className="p-0">
         {items.length === 0 ? (
-          <div className="p-4 text-center text-slate-500 text-sm">موردی یافت نشد</div>
+          <div className="p-4 text-center text-sm text-slate-500">موردی یافت نشد</div>
         ) : (
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-            {items.map((item: CompanyData) => (
-              <li key={item.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                <div className="flex justify-between items-start mb-1">
+            {items.map((item) => (
+              <li key={item.id} className="p-4 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <div className="mb-1 flex items-start justify-between">
                   <span className="font-semibold text-slate-800 dark:text-slate-100">{item.brand}</span>
-                  <span className="text-xs px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md">
+                  <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                     استراتژیک: {item.strategicImportance}
                   </span>
                 </div>
-                <div className="text-sm text-slate-500 dark:text-slate-400 mb-2 truncate">
-                  {item.category}
-                </div>
-                <div className="text-xs text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-2 rounded border border-slate-100 dark:border-slate-700">
-                  <span className="font-medium">اقدام: </span>{item.suggestedMove || "بررسی مدل همکاری"}
+                <div className="mb-2 truncate text-sm text-slate-500 dark:text-slate-400">{item.category}</div>
+                <div className="rounded border border-slate-100 bg-slate-50 p-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
+                  <span className="font-medium">اقدام: </span>
+                  {item.suggestedMove || "بررسی مدل همکاری"}
                 </div>
               </li>
             ))}
@@ -54,32 +51,76 @@ export function OpportunityTable({ data }: Props) {
       </div>
     </div>
   );
+}
+
+export function OpportunityTable({ data }: Props) {
+  const topPartners = useMemo(
+    () =>
+      data
+        .filter((item) => item.cooperationScore >= 6 && item.competitionScore < 5)
+        .sort((a, b) => b.strategicImportance - a.strategicImportance)
+        .slice(0, 5),
+    [data],
+  );
+  const highRisk = useMemo(
+    () =>
+      data
+        .filter((item) => item.cooperationScore < 5 && item.competitionScore >= 6)
+        .sort((a, b) => b.strategicImportance - a.strategicImportance)
+        .slice(0, 5),
+    [data],
+  );
+  const coopetitors = useMemo(
+    () =>
+      data
+        .filter(
+          (item) =>
+            item.cooperationScore >= 5 &&
+            item.competitionScore >= 5 &&
+            item.relationshipType.includes("Coopetitor"),
+        )
+        .sort((a, b) => b.strategicImportance - a.strategicImportance)
+        .slice(0, 5),
+    [data],
+  );
+  const quickWins = useMemo(
+    () =>
+      data
+        .filter(
+          (item) =>
+            item.relationshipType === "Opportunity" ||
+            (item.strategicImportance >= 4 && item.cooperationScore < 4 && item.competitionScore < 4),
+        )
+        .sort((a, b) => b.strategicImportance - a.strategicImportance)
+        .slice(0, 5),
+    [data],
+  );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      <TableCard 
-        title="شرکای کلیدی (Top Partners)" 
-        icon={ArrowUpRight} 
-        colorClass="text-emerald-600 dark:text-emerald-400" 
-        items={topPartners} 
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <OpportunityCategoryCard
+        title="شرکای کلیدی (Top Partners)"
+        icon={ArrowUpRight}
+        colorClass="text-emerald-600 dark:text-emerald-400"
+        items={topPartners}
       />
-      <TableCard 
-        title="رقبای پرخطر (High-Risk)" 
-        icon={AlertTriangle} 
-        colorClass="text-rose-600 dark:text-rose-400" 
-        items={highRisk} 
+      <OpportunityCategoryCard
+        title="رقبای پرخطر (High-Risk)"
+        icon={AlertTriangle}
+        colorClass="text-rose-600 dark:text-rose-400"
+        items={highRisk}
       />
-      <TableCard 
-        title="شریک-رقیب (Coopetitors)" 
-        icon={RefreshCcw} 
-        colorClass="text-amber-600 dark:text-amber-400" 
-        items={coopetitors} 
+      <OpportunityCategoryCard
+        title="شریک-رقیب (Coopetitors)"
+        icon={RefreshCcw}
+        colorClass="text-amber-600 dark:text-amber-400"
+        items={coopetitors}
       />
-      <TableCard 
-        title="بردهای سریع (Quick Wins)" 
-        icon={Zap} 
-        colorClass="text-purple-600 dark:text-purple-400" 
-        items={quickWins} 
+      <OpportunityCategoryCard
+        title="بردهای سریع (Quick Wins)"
+        icon={Zap}
+        colorClass="text-purple-600 dark:text-purple-400"
+        items={quickWins}
       />
     </div>
   );

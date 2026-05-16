@@ -3,6 +3,7 @@ import { AlertTriangle, Building2, Search, X } from "lucide-react";
 import { clsx } from "clsx";
 
 import {
+  buildFilterOptionList,
   formatValueChainLayer,
   NormalizedEntity,
   sortByCanonicalLayerOrder,
@@ -202,17 +203,14 @@ export function ValueChainHeatmap({ entities, layers }: Props) {
   const [selectedEntity, setSelectedEntity] = useState<NormalizedEntity | null>(null);
 
   const filterOptions = useMemo(() => {
-    const uniqueSorted = (values: string[]) =>
-      [EMPTY_FILTER, ...Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, "fa"))];
-
     return {
-      holdings: uniqueSorted(entities.map((entity) => entity.parentFirm)),
-      industries: uniqueSorted(entities.map((entity) => entity.industry)),
-      primaryRoles: uniqueSorted(entities.map((entity) => entity.primaryRole)),
-      secondaryRoles: uniqueSorted(entities.flatMap((entity) => entity.secondaryRoles)),
-      exchangeTypes: uniqueSorted(entities.flatMap((entity) => entity.exchangeTypes)),
-      actualPartnerships: uniqueSorted(entities.flatMap((entity) => entity.actualPartnerships)),
-      potentialPartnerships: uniqueSorted(entities.flatMap((entity) => entity.potentialPartnerships)),
+      holdings: buildFilterOptionList(entities.map((entity) => entity.parentFirm), EMPTY_FILTER),
+      industries: buildFilterOptionList(entities.map((entity) => entity.industry), EMPTY_FILTER),
+      primaryRoles: buildFilterOptionList(entities.map((entity) => entity.primaryRole), EMPTY_FILTER),
+      secondaryRoles: buildFilterOptionList(entities.flatMap((entity) => entity.secondaryRoles), EMPTY_FILTER),
+      exchangeTypes: buildFilterOptionList(entities.flatMap((entity) => entity.exchangeTypes), EMPTY_FILTER),
+      actualPartnerships: buildFilterOptionList(entities.flatMap((entity) => entity.actualPartnerships), EMPTY_FILTER),
+      potentialPartnerships: buildFilterOptionList(entities.flatMap((entity) => entity.potentialPartnerships), EMPTY_FILTER),
     };
   }, [entities]);
 
